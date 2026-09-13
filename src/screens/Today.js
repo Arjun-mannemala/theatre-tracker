@@ -204,6 +204,10 @@ export default function Today({ refreshKey, bump }) {
           <Text style={S.faint}>{date}</Text>
         </View>
         <View style={S.row}>
+          {!isToday ? (
+            <Btn label="Today" small kind="ghost" onPress={() => setDate(DB.today())} />
+          ) : null}
+          <View style={{ width: 6 }} />
           <Btn label={'\u2039'} small kind="ghost" onPress={() => setDate(DB.addDays(date, -1))} />
           <View style={{ width: 6 }} />
           <Btn

@@ -5,30 +5,46 @@ import * as A from '../analytics';
 import { C, S, Card, Pill, Stat, Divider, Empty, money, pct } from '../theme';
 import { Bars, Curve } from '../charts';
 
-const RANGES = [
-  { key: 7, label: '7 days' },
-  { key: 30, label: '30 days' },
-  { key: 90, label: '90 days' },
-  { key: 365, label: '1 year' },
-];
-
 export default function Insights({ refreshKey }) {
-  const [days, setDays] = useState(30);
+  const [mode, setMode] = useState('30');
   const [sum, setSum] = useState(null);
+  const [lines, setLines] = useState([]);
+  const [cover, setCover] = useState(null);
   const [wd, setWd] = useState([]);
   const [slots, setSlots] = useState([]);
+  const [grid, setGrid] = useState([]);
   const [mix, setMix] = useState([]);
+  const [ages, setAges] = useState([]);
   const [cats, setCats] = useState([]);
   const [alerts, setAlerts] = useState([]);
 
-  const to = DB.today();
-  const from = DB.addDays(to, -(days - 1));
+  const thisMonth = DB.monthOf(DB.today());
+  let from, to, title;
+  if (mode === 'month' || mode === 'lastmonth') {
+    const m = mode === 'month' ? thisMonth : DB.shiftMonth(thisMonth, -1);
+    const b = A.monthBounds(m);
+    from = b.from;
+    to = mode === 'month' ? DB.today() : b.to;
+    title = new Date(m + '-01T00:00:00').toLocaleDateString('en-IN', {
+      month: 'long',
+      year: 'numeric',
+    });
+  } else {
+    const n = Number(mode);
+    to = DB.today();
+    from = DB.addDays(to, -(n - 1));
+    title = `Last ${n} days`;
+  }
 
   const load = useCallback(async () => {
     setSum(await A.periodSummary(from, to));
+    setLines(await A.headlines(from, to));
+    setCover(await A.coverage(from, to));
     setWd(await A.weekdayProfile(from, to));
     setSlots(await DB.slotBreakdown(from, to));
+    setGrid(await DB.slotWeekdayGrid(from, to));
     setMix(await DB.classMix(from, to));
+    setAges(await A.byFilmAge());
     setCats(await DB.categoryBreakdown(from, to, DB.monthOf(to)));
     setAlerts(await A.expenseAnomalies(DB.monthOf(to)));
   }, [from, to]);
@@ -42,21 +58,57 @@ export default function Insights({ refreshKey }) {
   const hasData = sum.days.length > 0;
   const catTotal = cats.reduce((a, c) => a + c.total, 0);
 
+  // slot x weekday occupancy lookup
+  const slotNames = [...new Set(grid.map((g) => g.slot))];
+  const cell = (slot, wdIndex) => {
+    const r = grid.find((g) => g.slot === slot && g.wd === wdIndex);
+    return r ? A.occ(r.tickets, r.capacity) : null;
+  };
+
   return (
     <ScrollView style={S.screen} contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
       <Text style={S.h1}>Insights</Text>
+      <Text style={[S.faint, { marginTop: 2 }]}>{title}</Text>
 
       <View style={[S.row, { marginTop: 14, flexWrap: 'wrap' }]}>
-        {RANGES.map((r) => (
-          <Pill key={r.key} label={r.label} active={days === r.key} onPress={() => setDays(r.key)} />
-        ))}
+        <Pill label="This month" active={mode === 'month'} onPress={() => setMode('month')} />
+        <Pill label="Last month" active={mode === 'lastmonth'} onPress={() => setMode('lastmonth')} />
+        <Pill label="7 days" active={mode === '7'} onPress={() => setMode('7')} />
+        <Pill label="30 days" active={mode === '30'} onPress={() => setMode('30')} />
+        <Pill label="90 days" active={mode === '90'} onPress={() => setMode('90')} />
+        <Pill label="1 year" active={mode === '365'} onPress={() => setMode('365')} />
       </View>
 
       {!hasData ? (
-        <Empty text={'Nothing logged in this period.\nLog a few shows and the charts fill in.'} />
+        <Empty text={'Nothing logged in this period.\nLog a few shows and this fills in.'} />
       ) : (
         <View>
-          <Card>
+          {lines.length ? (
+            <Card style={{ borderColor: C.amberDim }}>
+              <Text style={S.faint}>What this says</Text>
+              {lines.map((l, i) => (
+                <View key={i} style={[S.row, { marginTop: 10, alignItems: 'flex-start' }]}>
+                  <Text style={{ color: C.amber, marginRight: 8, fontSize: 15 }}>{'\u2022'}</Text>
+                  <Text style={[S.body, { flex: 1, lineHeight: 21 }]}>{l}</Text>
+                </View>
+              ))}
+            </Card>
+          ) : null}
+
+          {cover && cover.missing.length ? (
+            <Card style={{ marginTop: 12 }} tone="alert">
+              <Text style={[S.faint, { color: C.red }]}>Gaps in the data</Text>
+              <Text style={[S.body, { marginTop: 6, lineHeight: 20 }]}>
+                {cover.missing.length} of {cover.total} days have nothing logged.
+              </Text>
+              <Text style={[S.faint, { marginTop: 6, lineHeight: 17 }]}>
+                If you were closed, ignore this. If not, the averages above are reading higher than
+                they should.
+              </Text>
+            </Card>
+          ) : null}
+
+          <Card style={{ marginTop: 12 }}>
             <View style={S.row}>
               <Stat label="Revenue" value={money(sum.revenue)} sub={`${sum.tickets} tickets`} />
               <Stat
@@ -71,6 +123,12 @@ export default function Insights({ refreshKey }) {
               <Stat label="Occupancy" value={pct(sum.occupancy)} />
               <Stat label="Avg ticket" value={money(sum.avgPrice)} />
               <Stat label="Cost per ticket" value={money(sum.costPerSeat)} />
+            </View>
+            <Divider />
+            <View style={S.row}>
+              <Stat label="Daily spend" value={money(sum.direct)} />
+              <Stat label="Fixed costs" value={money(sum.fixed)} />
+              <Stat label="Days logged" value={String(sum.days.length)} />
             </View>
           </Card>
 
@@ -95,10 +153,61 @@ export default function Insights({ refreshKey }) {
                 )}
               />
             </View>
-            <Text style={[S.faint, { marginTop: 10, lineHeight: 17 }]}>
-              Occupancy: {wd.filter((w) => w.n > 0).map((w) => `${w.day} ${pct(w.occupancy)}`).join('  ')}
-            </Text>
           </Card>
+
+          {slotNames.length ? (
+            <Card style={{ marginTop: 12 }}>
+              <Text style={S.faint}>Occupancy by slot and weekday</Text>
+              <View style={[S.row, { marginTop: 12, marginBottom: 4 }]}>
+                <Text style={[S.faint, { flex: 1.5 }]} />
+                {DB.WEEKDAYS.map((d) => (
+                  <Text key={d} style={[S.faint, { flex: 1, textAlign: 'center', fontSize: 10 }]}>
+                    {d[0]}
+                  </Text>
+                ))}
+              </View>
+              {slotNames.map((slot) => (
+                <View key={slot} style={[S.row, { marginTop: 6 }]}>
+                  <Text style={[S.faint, { flex: 1.5, fontSize: 11 }]} numberOfLines={1}>
+                    {slot}
+                  </Text>
+                  {DB.WEEKDAYS.map((d, i) => {
+                    const v = cell(slot, i);
+                    return (
+                      <View
+                        key={d}
+                        style={{
+                          flex: 1,
+                          marginHorizontal: 1,
+                          paddingVertical: 6,
+                          borderRadius: 4,
+                          alignItems: 'center',
+                          backgroundColor:
+                            v == null
+                              ? C.surfaceAlt
+                              : v < 15
+                              ? C.redDim
+                              : v < 35
+                              ? C.surfaceAlt
+                              : C.amberDim,
+                        }}>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: v == null ? C.faint : v < 15 ? C.red : v < 35 ? C.dim : C.amber,
+                          }}>
+                          {v == null ? '\u2013' : Math.round(v)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+              <Text style={[S.faint, { marginTop: 12, lineHeight: 17 }]}>
+                Percent full. Red is under 15%, which rarely covers the cost of opening.
+              </Text>
+            </Card>
+          ) : null}
 
           {slots.length ? (
             <Card style={{ marginTop: 12 }}>
@@ -127,9 +236,26 @@ export default function Insights({ refreshKey }) {
                     </View>
                   );
                 })}
-              <Text style={[S.faint, { marginTop: 12, lineHeight: 17 }]}>
-                A slot under 15% across many shows is usually costing more to run than it brings in.
-              </Text>
+            </Card>
+          ) : null}
+
+          {ages.length >= 2 ? (
+            <Card style={{ marginTop: 12 }}>
+              <Text style={S.faint}>How film age performs, across all your runs</Text>
+              {ages.map((a) => (
+                <View key={a.label} style={[S.between, { marginTop: 12 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={S.body}>{a.label}</Text>
+                    <Text style={[S.faint, { marginTop: 2 }]}>
+                      {a.runs} runs {'\u00B7'} {pct(a.occupancy)} full
+                    </Text>
+                  </View>
+                  <Text style={{ color: C.text, fontWeight: '600', fontSize: 15 }}>
+                    {money(a.revPerDay)}
+                    <Text style={S.faint}>/day</Text>
+                  </Text>
+                </View>
+              ))}
             </Card>
           ) : null}
 

@@ -21,6 +21,7 @@ function ChangeFilm({ visible, onClose, onDone }) {
   const [busy, setBusy] = useState(false);
   const [cost, setCost] = useState('');
   const [picked, setPicked] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -52,20 +53,28 @@ function ChangeFilm({ visible, onClose, onDone }) {
   }, [q]);
 
   async function start(film) {
-    const startedOn = DB.today();
-    const runId = await DB.startRun(film, startedOn, Number(cost) || 0);
-    if (film.qid) {
-      Films.details(film.qid).then(async (d) => {
-        if (!d) return;
-        const db = DB.raw();
-        await db.runAsync(
-          'UPDATE films SET genres=IFNULL(?,genres), lead=IFNULL(?,lead), language=IFNULL(?,language) WHERE tmdb_id=?',
-          [d.genres, d.lead, d.language, film.tmdb_id]
-        );
-      });
+    if (saving) return;
+    setSaving(true);
+    try {
+      await DB.startRun(film, DB.today(), Number(cost) || 0);
+      if (film.qid && film.tmdb_id) {
+        // Best effort. A lookup failure must never block starting the run.
+        try {
+          const d = await Films.details(film.qid);
+          if (d) {
+            await DB.raw().runAsync(
+              'UPDATE films SET genres=IFNULL(?,genres), lead=IFNULL(?,lead), language=IFNULL(?,language) WHERE tmdb_id=?',
+              [d.genres, d.lead, d.language, film.tmdb_id]
+            );
+          }
+        } catch (e) {}
+      }
+      onDone();
+      onClose();
+    } catch (e) {
+      Alert.alert('Could not start the run', String((e && e.message) || e));
     }
-    onDone();
-    onClose();
+    setSaving(false);
   }
 
   return (
@@ -153,7 +162,8 @@ function ChangeFilm({ visible, onClose, onDone }) {
                 style={{ marginTop: 6 }}
               />
               <Btn
-                label={`Start run: ${picked.title}`}
+                label={saving ? 'Starting\u2026' : `Start run: ${picked.title}`}
+                disabled={saving}
                 onPress={() => start(picked)}
                 style={{ marginTop: 12 }}
               />
@@ -331,11 +341,18 @@ export default function Film({ refreshKey, bump }) {
             <Text style={S.faint}>Now showing</Text>
             <Text style={[S.h2, { marginTop: 3 }]}>{run ? run.title : 'No film set'}</Text>
             {run ? (
-              <Text style={[S.dim, { marginTop: 3 }]}>
-                Day {DB.daysBetween(run.started_on, DB.today()) + 1}
-                {run.release_date ? ` \u00B7 ${run.release_date.slice(0, 4)}` : ''}
-                {bucket ? ` \u00B7 ${bucket.label} old` : ''}
-              </Text>
+              <View>
+                <Text style={[S.dim, { marginTop: 3 }]}>
+                  Day {DB.daysBetween(run.started_on, DB.today()) + 1}
+                  {run.release_date ? ` \u00B7 ${run.release_date.slice(0, 4)}` : ''}
+                  {bucket ? ` \u00B7 ${bucket.label} old` : ''}
+                </Text>
+                {run.lead || run.genres ? (
+                  <Text style={[S.faint, { marginTop: 4, lineHeight: 16 }]} numberOfLines={2}>
+                    {[run.lead, run.genres].filter(Boolean).join(' \u00B7 ')}
+                  </Text>
+                ) : null}
+              </View>
             ) : null}
           </View>
         </View>

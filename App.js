@@ -6,6 +6,7 @@ import {
   Platform,
   ActivityIndicator,
   KeyboardAvoidingView,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -24,6 +25,60 @@ const TABS = [
   { key: 'insights', label: 'Insights', Screen: Insights },
   { key: 'settings', label: 'Settings', Screen: Settings },
 ];
+
+
+/**
+ * Without this, any unhandled error closes the app with no explanation.
+ * Showing the message on screen makes a crash reportable instead of silent.
+ */
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { err: null, info: null };
+  }
+  static getDerivedStateFromError(err) {
+    return { err };
+  }
+  componentDidCatch(err, info) {
+    this.setState({ info });
+  }
+  render() {
+    if (!this.state.err) return this.props.children;
+    const msg = String(this.state.err && (this.state.err.message || this.state.err));
+    const stack = String((this.state.info && this.state.info.componentStack) || '').trim();
+    return (
+      <ScrollView
+        style={{ flex: 1, backgroundColor: C.bg }}
+        contentContainerStyle={{ padding: 24, paddingTop: 60 }}>
+        <Text style={S.h2}>Something broke</Text>
+        <Text style={[S.dim, { marginTop: 8, lineHeight: 20 }]}>
+          Screenshot this and send it over. Your saved data is untouched.
+        </Text>
+        <Text
+          selectable
+          style={{ color: C.red, marginTop: 18, fontSize: 13, lineHeight: 19 }}>
+          {msg}
+        </Text>
+        {stack ? (
+          <Text selectable style={{ color: C.faint, marginTop: 14, fontSize: 11, lineHeight: 16 }}>
+            {stack.split('\n').slice(0, 12).join('\n')}
+          </Text>
+        ) : null}
+        <Pressable
+          onPress={() => this.setState({ err: null, info: null })}
+          style={{
+            marginTop: 24,
+            backgroundColor: C.amber,
+            borderRadius: 10,
+            paddingVertical: 13,
+            alignItems: 'center',
+          }}>
+          <Text style={{ color: '#241B07', fontWeight: '600' }}>Try again</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
+}
 
 function Shell() {
   // Android draws edge to edge, so the navigation bar would otherwise sit on
@@ -115,7 +170,9 @@ function Shell() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <Shell />
+      <ErrorBoundary>
+        <Shell />
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

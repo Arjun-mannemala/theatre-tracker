@@ -51,11 +51,7 @@ export default function Expenses({ refreshKey, bump }) {
 
   const total = cats.reduce((a, c) => a + (Number(vals[c.id]) || 0), 0);
 
-  const shiftMonth = (n) => {
-    const [y, m] = month.split('-').map(Number);
-    const d = new Date(y, m - 1 + n, 1);
-    setMonth(d.toISOString().slice(0, 7));
-  };
+  const shiftMonth = (n) => setMonth(DB.shiftMonth(month, n));
 
   return (
     <ScrollView style={S.screen} contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>

@@ -2,12 +2,25 @@ import * as SQLite from 'expo-sqlite';
 
 let db = null;
 
-export const today = () => new Date().toISOString().slice(0, 10);
+/**
+ * Dates are handled in local time throughout. toISOString() converts to UTC,
+ * which in India shifts the date back by a day and makes stepping forward
+ * or backward through days go wrong.
+ */
+const pad = (n) => String(n).padStart(2, '0');
+export const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+export const isoMonth = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+
+export const today = () => isoDate(new Date());
 export const monthOf = (d) => (d || today()).slice(0, 7);
 export const addDays = (iso, n) => {
   const t = new Date(iso + 'T00:00:00');
   t.setDate(t.getDate() + n);
-  return t.toISOString().slice(0, 10);
+  return isoDate(t);
+};
+export const shiftMonth = (month, n) => {
+  const [y, m] = month.split('-').map(Number);
+  return isoMonth(new Date(y, m - 1 + n, 1));
 };
 export const daysBetween = (a, b) =>
   Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
@@ -160,6 +173,15 @@ export async function setSetting(key, value) {
   ]);
 }
 
+export const setSlots = (arr) => setSetting('slots', JSON.stringify(arr));
+
+export async function renameSlot(oldName, newName) {
+  const list = await getSlots();
+  if (oldName === newName) return;
+  await setSlots(list.map((s) => (s === oldName ? newName : s)));
+  await db.runAsync('UPDATE shows SET slot=? WHERE slot=?', [newName, oldName]);
+}
+
 export async function getSlots() {
   const raw = await getSetting('slots');
   try {
@@ -180,8 +202,13 @@ export const addClass = (name, seats, price) =>
     name, seats, price,
   ]);
 
-export const updateClass = (id, name, seats, price) =>
-  db.runAsync('UPDATE classes SET name=?, seats=?, price=? WHERE id=?', [name, seats, price, id]);
+export async function updateClass(id, name, seats, price) {
+  const prev = await db.getFirstAsync('SELECT name FROM classes WHERE id=?', [id]);
+  await db.runAsync('UPDATE classes SET name=?, seats=?, price=? WHERE id=?', [name, seats, price, id]);
+  if (prev && prev.name !== name) {
+    await db.runAsync('UPDATE tickets SET class_name=? WHERE class_id=?', [name, id]);
+  }
+}
 
 export const archiveClass = (id) => db.runAsync('UPDATE classes SET archived=1 WHERE id=?', [id]);
 
@@ -235,6 +262,34 @@ export async function startRun(film, startedOn, bookingCost) {
 
 export const setRunBookingCost = (runId, cost) =>
   db.runAsync('UPDATE runs SET booking_cost=? WHERE id=?', [cost, runId]);
+
+export const renameFilm = (filmId, title) =>
+  db.runAsync('UPDATE films SET title=? WHERE id=?', [title, filmId]);
+
+export const updateRun = (runId, startedOn, bookingCost) =>
+  db.runAsync('UPDATE runs SET started_on=?, booking_cost=? WHERE id=?', [
+    startedOn, bookingCost, runId,
+  ]);
+
+export const countRunShows = async (runId) => {
+  const r = await db.getFirstAsync('SELECT COUNT(*) AS n FROM shows WHERE run_id=?', [runId]);
+  return r ? r.n : 0;
+};
+
+/** Removes the run and every show logged against it. */
+export async function deleteRun(runId) {
+  await db.runAsync(
+    'DELETE FROM tickets WHERE show_id IN (SELECT id FROM shows WHERE run_id=?)', [runId]
+  );
+  await db.runAsync('DELETE FROM shows WHERE run_id=?', [runId]);
+  await db.runAsync('DELETE FROM runs WHERE id=?', [runId]);
+}
+
+/** Puts an archived run back as the current film. */
+export async function reactivateRun(runId) {
+  await db.runAsync('UPDATE runs SET active=0 WHERE active=1');
+  await db.runAsync('UPDATE runs SET active=1, ended_on=NULL WHERE id=?', [runId]);
+}
 
 export async function priorRuns(filmId, excludeRunId) {
   return db.getAllAsync(
@@ -379,8 +434,13 @@ export const addCategory = (name, kind) =>
     name, kind,
   ]);
 
-export const renameCategory = (id, name) =>
-  db.runAsync('UPDATE categories SET name=? WHERE id=?', [name, id]);
+export async function renameCategory(id, name) {
+  const prev = await db.getFirstAsync('SELECT name FROM categories WHERE id=?', [id]);
+  await db.runAsync('UPDATE categories SET name=? WHERE id=?', [name, id]);
+  if (prev && prev.name !== name) {
+    await db.runAsync('UPDATE expenses SET category_name=? WHERE category_id=?', [name, id]);
+  }
+}
 
 export const archiveCategory = (id) =>
   db.runAsync('UPDATE categories SET archived=1 WHERE id=?', [id]);
