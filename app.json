@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Theatre",
+    "slug": "theatre-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#151210",
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "package": "com.theatre.tracker",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#151210"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}
