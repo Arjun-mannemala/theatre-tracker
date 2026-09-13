@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, Modal, Pressable, Image, ActivityIndicator } from 'react-native';
 import * as DB from '../db';
 import * as A from '../analytics';
-import * as TMDB from '../tmdb';
+import * as Films from '../films';
 import { C, S, Card, Btn, Field, Divider, Empty, money, pct } from '../theme';
 import { Curve } from '../charts';
 
@@ -12,7 +12,6 @@ function ChangeFilm({ visible, onClose, onDone }) {
   const [busy, setBusy] = useState(false);
   const [cost, setCost] = useState('');
   const [picked, setPicked] = useState(null);
-  const [hasKey, setHasKey] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -20,19 +19,18 @@ function ChangeFilm({ visible, onClose, onDone }) {
       setResults([]);
       setPicked(null);
       setCost('');
-      TMDB.getKey().then((k) => setHasKey(!!k));
     }
   }, [visible]);
 
   useEffect(() => {
-    if (!hasKey || q.trim().length < 2) {
+    if (q.trim().length < 2) {
       setResults([]);
       return;
     }
     let alive = true;
     setBusy(true);
     const t = setTimeout(async () => {
-      const r = await TMDB.search(q);
+      const r = await Films.search(q);
       if (alive) {
         setResults(r);
         setBusy(false);
@@ -42,18 +40,18 @@ function ChangeFilm({ visible, onClose, onDone }) {
       alive = false;
       clearTimeout(t);
     };
-  }, [q, hasKey]);
+  }, [q]);
 
   async function start(film) {
     const startedOn = DB.today();
     const runId = await DB.startRun(film, startedOn, Number(cost) || 0);
-    if (film.tmdb_id) {
-      TMDB.details(film.tmdb_id).then(async (d) => {
+    if (film.qid) {
+      Films.details(film.qid).then(async (d) => {
         if (!d) return;
         const db = DB.raw();
         await db.runAsync(
-          'UPDATE films SET genres=?, lead=?, release_date=IFNULL(?,release_date) WHERE tmdb_id=?',
-          [d.genres, d.lead, d.release_date, film.tmdb_id]
+          'UPDATE films SET genres=IFNULL(?,genres), lead=IFNULL(?,lead), language=IFNULL(?,language) WHERE tmdb_id=?',
+          [d.genres, d.lead, d.language, film.tmdb_id]
         );
       });
     }
@@ -88,20 +86,19 @@ function ChangeFilm({ visible, onClose, onDone }) {
             style={{ marginTop: 14 }}
           />
           <Text style={[S.faint, { marginTop: 6 }]}>
-            {hasKey
-              ? 'Search fills in the poster and release year. Or just type the name and start.'
-              : 'Add a TMDB key in Settings to search. Typing the name works fine without it.'}
+            Search fills in the poster and release year. No internet, or an old film with no
+            article? Type the name and start the run anyway.
           </Text>
 
           <ScrollView style={{ marginTop: 12 }} keyboardShouldPersistTaps="handled">
             {busy ? <ActivityIndicator color={C.amber} style={{ marginVertical: 12 }} /> : null}
 
             {results.map((r) => (
-              <Pressable key={r.tmdb_id} onPress={() => setPicked(r)}>
+              <Pressable key={r.qid} onPress={() => setPicked(r)}>
                 <Card
                   style={{
                     marginBottom: 8,
-                    borderColor: picked && picked.tmdb_id === r.tmdb_id ? C.amber : C.line,
+                    borderColor: picked && picked.qid === r.qid ? C.amber : C.line,
                   }}>
                   <View style={S.row}>
                     {r.poster ? (
@@ -126,7 +123,7 @@ function ChangeFilm({ visible, onClose, onDone }) {
                 <Card
                   style={{
                     marginBottom: 8,
-                    borderColor: picked && !picked.tmdb_id ? C.amber : C.line,
+                    borderColor: picked && !picked.qid ? C.amber : C.line,
                   }}>
                   <Text style={S.body}>Use "{q.trim()}"</Text>
                   <Text style={[S.faint, { marginTop: 3 }]}>No lookup, just the name</Text>

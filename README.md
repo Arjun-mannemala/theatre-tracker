@@ -50,12 +50,14 @@ A version mismatch on the first build is normal and takes one commit to fix.
 
 Prices are remembered, so after the first show you only type ticket counts.
 
-### Film search (optional)
+### Film search
 
-**themoviedb.org** → sign up → Settings → API → request a key (choose Developer, personal use).
-Paste it into **Settings → Film lookup**. Posters and release years fill themselves in.
+Nothing to set up. Type two letters of a film name in the **Film** tab and it searches
+Wikipedia for the poster and release year.
 
-Without a key you type the film name and everything else works the same.
+Old and re-released films are well covered. If something doesn't appear — a small regional
+film with no article, or the phone is offline — type the name and start the run anyway.
+Everything except the poster and release year works the same.
 
 ---
 

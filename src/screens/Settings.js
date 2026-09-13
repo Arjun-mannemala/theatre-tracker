@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, Alert, Pressable } from 'react-native';
 import * as DB from '../db';
 import * as Backup from '../backup';
-import * as TMDB from '../tmdb';
 import { C, S, Card, Btn, Field, Pill, Divider, money } from '../theme';
 
 function ClassRow({ c, onSave, onRemove }) {
@@ -51,14 +50,12 @@ export default function Settings({ refreshKey, bump }) {
   const [cats, setCats] = useState([]);
   const [newCat, setNewCat] = useState('');
   const [newClass, setNewClass] = useState('');
-  const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [lastBackup, setLastBackup] = useState(null);
 
   const load = useCallback(async () => {
     setClasses(await DB.getClasses());
     setCats(await DB.getCategories(catKind));
-    setKey((await TMDB.getKey()) || '');
     setLastBackup(await DB.getSetting('last_backup'));
   }, [catKind]);
 
@@ -248,30 +245,6 @@ export default function Settings({ refreshKey, bump }) {
             }}
           />
         </View>
-      </Card>
-
-      <Card style={{ marginTop: 12 }}>
-        <Text style={S.h2}>Film lookup</Text>
-        <Text style={[S.dim, { marginTop: 6, lineHeight: 19 }]}>
-          A free TMDB key fills in posters and release years when you set a film. Without it you type
-          the name, and everything else still works.
-        </Text>
-        <Field
-          value={key}
-          onChangeText={setKey}
-          placeholder="TMDB API key"
-          style={{ marginTop: 12 }}
-        />
-        <Btn
-          label="Save key"
-          small
-          kind="ghost"
-          style={{ marginTop: 8 }}
-          onPress={async () => {
-            await TMDB.setKey(key);
-            Alert.alert('Saved', 'Film search is on.');
-          }}
-        />
       </Card>
 
       <Text style={[S.faint, { marginTop: 20, textAlign: 'center' }]}>Theatre 1.0</Text>
