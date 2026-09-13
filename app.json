@@ -2,6 +2,7 @@
   "expo": {
     "name": "Theatre",
     "slug": "theatre-tracker",
+    "owner": "arjun-mannemalas-team",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -16,7 +17,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "051683f9-7f04-45f5-b46a-7f31b6b3d9c5"
       }
     }
   }
