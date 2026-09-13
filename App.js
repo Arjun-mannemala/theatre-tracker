@@ -3,12 +3,11 @@ import {
   View,
   Text,
   Pressable,
-  SafeAreaView,
   Platform,
-  StatusBar as RNStatusBar,
   ActivityIndicator,
   KeyboardAvoidingView,
 } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as DB from './src/db';
 import { C, S } from './src/theme';
@@ -26,7 +25,10 @@ const TABS = [
   { key: 'settings', label: 'Settings', Screen: Settings },
 ];
 
-export default function App() {
+function Shell() {
+  // Android draws edge to edge, so the navigation bar would otherwise sit on
+  // top of the tab row and eat the taps meant for it.
+  const insets = useSafeAreaInsets();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('today');
@@ -59,13 +61,8 @@ export default function App() {
   const Active = TABS.find((t) => t.key === tab).Screen;
 
   return (
-    <SafeAreaView
-      style={{
-        flex: 1,
-        backgroundColor: C.bg,
-        paddingTop: Platform.OS === 'android' ? RNStatusBar.currentHeight : 0,
-      }}>
-      <StatusBar style="light" backgroundColor={C.bg} />
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top }}>
+      <StatusBar style="light" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -79,8 +76,8 @@ export default function App() {
             borderTopWidth: 1,
             borderTopColor: C.line,
             backgroundColor: C.surface,
-            paddingBottom: 6,
             paddingTop: 8,
+            paddingBottom: Math.max(insets.bottom, 10),
           }}>
           {TABS.map((t) => {
             const on = t.key === tab;
@@ -111,6 +108,14 @@ export default function App() {
           })}
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <Shell />
+    </SafeAreaProvider>
   );
 }

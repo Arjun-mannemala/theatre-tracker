@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, Modal, Pressable, Image, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  Modal,
+  Pressable,
+  Image,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
 import * as DB from '../db';
 import * as A from '../analytics';
 import * as Films from '../films';
@@ -150,7 +159,124 @@ function ChangeFilm({ visible, onClose, onDone }) {
               />
             </View>
           ) : null}
-          <View style={{ height: 14 }} />
+          <View style={{ height: 44 }} />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function EditRun({ run, onClose, onDone }) {
+  const [title, setTitle] = useState('');
+  const [cost, setCost] = useState('');
+  const [start, setStart] = useState('');
+  const [shows, setShows] = useState(0);
+
+  useEffect(() => {
+    if (!run) return;
+    setTitle(run.title || '');
+    setCost(String(run.booking_cost || ''));
+    setStart(run.started_on || '');
+    DB.countRunShows(run.id).then(setShows);
+  }, [run]);
+
+  if (!run) return null;
+
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(start);
+
+  async function save() {
+    if (!title.trim()) {
+      Alert.alert('Name needed', 'Give the film a name.');
+      return;
+    }
+    if (!validDate) {
+      Alert.alert('Check the date', 'Use the form YYYY-MM-DD, for example 2026-09-13.');
+      return;
+    }
+    await DB.renameFilm(run.film_id, title.trim());
+    await DB.updateRun(run.id, start, Number(cost) || 0);
+    onDone();
+    onClose();
+  }
+
+  function remove() {
+    Alert.alert(
+      `Delete this run?`,
+      shows > 0
+        ? `${shows} shows logged against it will be deleted too, and removed from your totals.`
+        : 'Nothing has been logged against it yet.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await DB.deleteRun(run.id);
+            onDone();
+            onClose();
+          },
+        },
+      ]
+    );
+  }
+
+  return (
+    <Modal visible={!!run} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: '#000000BB', justifyContent: 'flex-end' }}>
+        <View
+          style={{
+            backgroundColor: C.bg,
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            padding: 18,
+            borderTopWidth: 1,
+            borderColor: C.line,
+          }}>
+          <View style={S.between}>
+            <Text style={S.h2}>Edit run</Text>
+            <Pressable onPress={onClose} hitSlop={12}>
+              <Text style={{ color: C.dim, fontSize: 22 }}>{'\u00D7'}</Text>
+            </Pressable>
+          </View>
+          <Text style={[S.faint, { marginTop: 3 }]}>
+            {shows} shows logged {run.active ? '\u00B7 currently showing' : ''}
+          </Text>
+
+          <Divider />
+
+          <Text style={S.faint}>Film name</Text>
+          <Field value={title} onChangeText={setTitle} style={{ marginTop: 6 }} />
+
+          <Text style={[S.faint, { marginTop: 14 }]}>Started on</Text>
+          <Field value={start} onChangeText={setStart} placeholder="YYYY-MM-DD" style={{ marginTop: 6 }} />
+
+          <Text style={[S.faint, { marginTop: 14 }]}>Booking cost</Text>
+          <Field
+            value={cost}
+            onChangeText={(v) => setCost(v.replace(/[^0-9.]/g, ''))}
+            placeholder="0"
+            numeric
+            style={{ marginTop: 6 }}
+          />
+
+          <Btn label="Save changes" onPress={save} style={{ marginTop: 16 }} />
+
+          {!run.active ? (
+            <Btn
+              label="Make this the current film"
+              kind="ghost"
+              small
+              style={{ marginTop: 8 }}
+              onPress={async () => {
+                await DB.reactivateRun(run.id);
+                onDone();
+                onClose();
+              }}
+            />
+          ) : null}
+
+          <Btn label="Delete run" kind="danger" small style={{ marginTop: 8 }} onPress={remove} />
+          <View style={{ height: 44 }} />
         </View>
       </View>
     </Modal>
@@ -163,6 +289,7 @@ export default function Film({ refreshKey, bump }) {
   const [prior, setPrior] = useState([]);
   const [board, setBoard] = useState([]);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   const load = useCallback(async () => {
     const r = await DB.activeRun();
@@ -269,13 +396,15 @@ export default function Film({ refreshKey, bump }) {
         </Card>
       ) : null}
 
-      <Text style={[S.h2, { marginTop: 24, marginBottom: 10 }]}>All runs</Text>
+      <Text style={[S.h2, { marginTop: 24, marginBottom: 4 }]}>All runs</Text>
+      <Text style={[S.faint, { marginBottom: 10 }]}>Tap any run to rename it, fix its dates, or delete it.</Text>
 
       {board.length === 0 ? (
         <Empty text={'Runs appear here once you log shows.\nComparisons get useful after about ten films.'} />
       ) : (
         board.map((r) => (
-          <Card key={r.id} style={{ marginBottom: 8 }}>
+          <Pressable key={r.id} onPress={() => setEditing(r)}>
+          <Card style={{ marginBottom: 8 }}>
             <View style={S.between}>
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={S.body} numberOfLines={1}>
@@ -304,8 +433,18 @@ export default function Film({ refreshKey, bump }) {
               </View>
             </View>
           </Card>
+          </Pressable>
         ))
       )}
+
+      <EditRun
+        run={editing}
+        onClose={() => setEditing(null)}
+        onDone={() => {
+          load();
+          bump();
+        }}
+      />
 
       <ChangeFilm
         visible={open}

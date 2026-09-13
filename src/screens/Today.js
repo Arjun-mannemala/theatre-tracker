@@ -129,7 +129,34 @@ function ShowForm({ visible, onClose, date, slot, run, classes, existing, onSave
           </View>
 
           <Btn label="Save show" onPress={save} style={{ marginTop: 14 }} />
-          <View style={{ height: 18 }} />
+
+          {existing ? (
+            <Btn
+              label="Delete this show"
+              kind="danger"
+              small
+              style={{ marginTop: 8 }}
+              onPress={() =>
+                Alert.alert(
+                  `Delete the ${slot}?`,
+                  'The tickets logged against it are removed from your totals.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Delete',
+                      style: 'destructive',
+                      onPress: async () => {
+                        await DB.deleteShow(existing.id);
+                        onSaved();
+                        onClose();
+                      },
+                    },
+                  ]
+                )
+              }
+            />
+          ) : null}
+          <View style={{ height: 44 }} />
         </View>
       </View>
     </Modal>
