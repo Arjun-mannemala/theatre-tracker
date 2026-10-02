@@ -47,6 +47,17 @@ function ShowForm({ visible, onClose, date, slot, run, classes, existing, onSave
   }
 
   async function commit() {
+    try {
+      await write();
+    } catch (e) {
+      Alert.alert('The show did not save', String((e && e.message) || e));
+      return;
+    }
+    onSaved();
+    onClose();
+  }
+
+  async function write() {
     await DB.saveShow({
       runId: run ? run.id : null,
       date,
@@ -62,8 +73,6 @@ function ShowForm({ visible, onClose, date, slot, run, classes, existing, onSave
     for (const l of lines) {
       if (Number(l.price) > 0) await DB.updateClassPriceQuiet(l.class_id, Number(l.price));
     }
-    onSaved();
-    onClose();
   }
 
   return (
@@ -146,7 +155,12 @@ function ShowForm({ visible, onClose, date, slot, run, classes, existing, onSave
                       text: 'Delete',
                       style: 'destructive',
                       onPress: async () => {
-                        await DB.deleteShow(existing.id);
+                        try {
+                          await DB.deleteShow(existing.id);
+                        } catch (e) {
+                          Alert.alert('The show was not deleted', String((e && e.message) || e));
+                          return;
+                        }
                         onSaved();
                         onClose();
                       },
@@ -188,7 +202,7 @@ export default function Today({ refreshKey, bump }) {
   const isToday = date === DB.today();
   const label = isToday
     ? 'Today'
-    : new Date(date + 'T00:00:00').toLocaleDateString('en-IN', {
+    : DB.toDate(date).toLocaleDateString('en-IN', {
         weekday: 'short',
         day: 'numeric',
         month: 'short',
@@ -197,7 +211,10 @@ export default function Today({ refreshKey, bump }) {
   const be = sum ? sum.breakEven : null;
 
   return (
-    <ScrollView style={S.screen} contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
+    <ScrollView
+      style={S.screen}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
       <View style={S.between}>
         <View>
           <Text style={S.h1}>{label}</Text>

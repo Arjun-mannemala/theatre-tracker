@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, Alert, Pressable } from 'react-native';
+import { View, Text, ScrollView, Alert, Pressable, Keyboard } from 'react-native';
 import * as DB from '../db';
 import * as Backup from '../backup';
 import { C, S, Card, Btn, Field, Pill, Divider } from '../theme';
@@ -17,15 +17,14 @@ function EditRow({ value, onRename, onRemove, onUp, canUp }) {
       ) : (
         <View style={S.row}>
           {onUp ? (
-            <Pressable hitSlop={10} disabled={!canUp} onPress={onUp}>
-              <Text style={{ color: canUp ? C.dim : C.line, fontSize: 17, paddingHorizontal: 10 }}>
-                {'\u2191'}
-              </Text>
+            <Pressable
+              disabled={!canUp}
+              onPress={onUp}
+              style={{ paddingHorizontal: 14, paddingVertical: 8, marginLeft: 4 }}>
+              <Text style={{ color: canUp ? C.dim : C.line, fontSize: 18 }}>{'\u2191'}</Text>
             </Pressable>
           ) : null}
-          <Pressable hitSlop={10} onPress={onRemove}>
-            <Text style={{ color: C.faint, fontSize: 13, paddingLeft: 8 }}>Remove</Text>
-          </Pressable>
+          <Btn label="Remove" small kind="ghost" style={{ marginLeft: 4 }} onPress={onRemove} />
         </View>
       )}
     </View>
@@ -104,10 +103,24 @@ export default function Settings({ refreshKey, bump }) {
     bump();
   };
 
+  /**
+   * Runs a change, then refreshes. If the change fails it says so on screen
+   * instead of the button appearing to do nothing.
+   */
+  const act = async (fn) => {
+    Keyboard.dismiss();
+    try {
+      await fn();
+    } catch (e) {
+      Alert.alert('That did not save', String((e && e.message) || e));
+    }
+    after();
+  };
+
   const confirmRemove = (what, note, run) =>
     Alert.alert(`Remove ${what}?`, note, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: run },
+      { text: 'Remove', style: 'destructive', onPress: () => act(run) },
     ]);
 
   async function doExport() {
@@ -162,7 +175,10 @@ export default function Settings({ refreshKey, bump }) {
   const staleBackup = !lastBackup || DB.daysBetween(lastBackup, DB.today()) > 7;
 
   return (
-    <ScrollView style={S.screen} contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
+    <ScrollView
+      style={S.screen}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
       <Text style={S.h1}>Settings</Text>
 
       <Card style={{ marginTop: 14, borderColor: staleBackup ? C.red : C.line }}>
@@ -188,20 +204,14 @@ export default function Settings({ refreshKey, bump }) {
           <ClassRow
             key={c.id}
             c={c}
-            onSave={async (id, n, s, p) => {
-              await DB.updateClass(id, n, s, p);
-              after();
-            }}
+            onSave={(id, n, s, p) => act(() => DB.updateClass(id, n, s, p))}
             onRemove={(cl) =>
               classes.length <= 1
                 ? Alert.alert('Keep one class', 'You need at least one class to sell tickets in.')
                 : confirmRemove(
                     cl.name,
                     'Past shows keep their records. The class just stops appearing on new entries.',
-                    async () => {
-                      await DB.archiveClass(cl.id);
-                      after();
-                    }
+                    () => DB.archiveClass(cl.id)
                   )
             }
           />
@@ -218,11 +228,12 @@ export default function Settings({ refreshKey, bump }) {
             small
             style={{ marginLeft: 8 }}
             disabled={!newClass.trim()}
-            onPress={async () => {
-              await DB.addClass(newClass.trim(), 50, 0);
-              setNewClass('');
-              after();
-            }}
+            onPress={() =>
+              act(async () => {
+                await DB.addClass(newClass.trim(), 50, 0);
+                setNewClass('');
+              })
+            }
           />
         </View>
       </Card>
@@ -237,27 +248,26 @@ export default function Settings({ refreshKey, bump }) {
             key={name}
             value={name}
             canUp={i > 0}
-            onUp={async () => {
-              const next = slots.slice();
-              next.splice(i - 1, 0, next.splice(i, 1)[0]);
-              await DB.setSlots(next);
-              after();
-            }}
-            onRename={async (n) => {
+            onUp={() =>
+              act(() => {
+                const next = slots.slice();
+                next.splice(i - 1, 0, next.splice(i, 1)[0]);
+                return DB.setSlots(next);
+              })
+            }
+            onRename={(n) => {
               if (slots.includes(n)) {
                 Alert.alert('Already there', `${n} is already in the list.`);
                 return;
               }
-              await DB.renameSlot(name, n);
-              after();
+              act(() => DB.renameSlot(name, n));
             }}
             onRemove={() =>
               slots.length <= 1
                 ? Alert.alert('Keep one slot', 'You need at least one slot to log shows against.')
-                : confirmRemove(name, 'Past shows keep their records.', async () => {
-                    await DB.setSlots(slots.filter((x) => x !== name));
-                    after();
-                  })
+                : confirmRemove(name, 'Past shows keep their records.', () =>
+                    DB.setSlots(slots.filter((x) => x !== name))
+                  )
             }
           />
         ))}
@@ -273,15 +283,16 @@ export default function Settings({ refreshKey, bump }) {
             small
             style={{ marginLeft: 8 }}
             disabled={!newSlot.trim()}
-            onPress={async () => {
+            onPress={() => {
               const n = newSlot.trim();
               if (slots.includes(n)) {
                 Alert.alert('Already there', `${n} is already in the list.`);
                 return;
               }
-              await DB.setSlots([...slots, n]);
-              setNewSlot('');
-              after();
+              act(async () => {
+                await DB.setSlots([...slots, n]);
+                setNewSlot('');
+              });
             }}
           />
         </View>
@@ -301,15 +312,11 @@ export default function Settings({ refreshKey, bump }) {
           <EditRow
             key={c.id}
             value={c.name}
-            onRename={async (n) => {
-              await DB.renameCategory(c.id, n);
-              after();
-            }}
+            onRename={(n) => act(() => DB.renameCategory(c.id, n))}
             onRemove={() =>
-              confirmRemove(c.name, 'Past entries stay in your history.', async () => {
-                await DB.archiveCategory(c.id);
-                after();
-              })
+              confirmRemove(c.name, 'Past entries stay in your history.', () =>
+                DB.archiveCategory(c.id)
+              )
             }
           />
         ))}
@@ -325,16 +332,17 @@ export default function Settings({ refreshKey, bump }) {
             small
             style={{ marginLeft: 8 }}
             disabled={!newCat.trim()}
-            onPress={async () => {
-              await DB.addCategory(newCat.trim(), catKind);
-              setNewCat('');
-              after();
-            }}
+            onPress={() =>
+              act(async () => {
+                await DB.addCategory(newCat.trim(), catKind);
+                setNewCat('');
+              })
+            }
           />
         </View>
       </Card>
 
-      <Text style={[S.faint, { marginTop: 20, textAlign: 'center' }]}>Talkies 1.0</Text>
+      <Text style={[S.faint, { marginTop: 20, textAlign: 'center' }]}>Talkies {DB.APP_VERSION}</Text>
     </ScrollView>
   );
 }

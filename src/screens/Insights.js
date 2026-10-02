@@ -25,7 +25,7 @@ export default function Insights({ refreshKey }) {
     const b = A.monthBounds(m);
     from = b.from;
     to = mode === 'month' ? DB.today() : b.to;
-    title = new Date(m + '-01T00:00:00').toLocaleDateString('en-IN', {
+    title = DB.toDate(m).toLocaleDateString('en-IN', {
       month: 'long',
       year: 'numeric',
     });
@@ -66,7 +66,10 @@ export default function Insights({ refreshKey }) {
   };
 
   return (
-    <ScrollView style={S.screen} contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
+    <ScrollView
+      style={S.screen}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
       <Text style={S.h1}>Insights</Text>
       <Text style={[S.faint, { marginTop: 2 }]}>{title}</Text>
 

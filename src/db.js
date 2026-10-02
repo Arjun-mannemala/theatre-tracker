@@ -2,29 +2,37 @@ import * as SQLite from 'expo-sqlite';
 
 let db = null;
 
+/** Shown at the bottom of Settings so you can tell which build is installed. */
+export const APP_VERSION = '1.0.1 (build 6)';
+
 /**
- * Dates are handled in local time throughout. toISOString() converts to UTC,
- * which in India shifts the date back by a day and makes stepping forward
- * or backward through days go wrong.
+ * Dates are plain 'YYYY-MM-DD' text and are only ever taken apart and put
+ * back together by hand, in the phone's own time zone. Nothing here asks the
+ * JS engine to read a date string or convert to UTC: in India that shifts the
+ * date by a day, which made the back arrow jump two days and the forward
+ * arrow do nothing.
  */
 const pad = (n) => String(n).padStart(2, '0');
 export const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const isoMonth = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+/** 'YYYY-MM-DD' (or 'YYYY-MM') to a Date at noon local time. */
+export const toDate = (iso) => {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1, 12, 0, 0);
+};
 
 export const today = () => isoDate(new Date());
 export const monthOf = (d) => (d || today()).slice(0, 7);
 export const addDays = (iso, n) => {
-  const t = new Date(iso + 'T00:00:00');
-  t.setDate(t.getDate() + n);
-  return isoDate(t);
+  const [y, m, d] = String(iso).split('-').map(Number);
+  return isoDate(new Date(y, m - 1, d + n, 12, 0, 0));
 };
 export const shiftMonth = (month, n) => {
   const [y, m] = month.split('-').map(Number);
-  return isoMonth(new Date(y, m - 1 + n, 1));
+  return isoMonth(new Date(y, m - 1 + n, 1, 12, 0, 0));
 };
-export const daysBetween = (a, b) =>
-  Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
-export const weekdayOf = (iso) => new Date(iso + 'T00:00:00').getDay();
+export const daysBetween = (a, b) => Math.round((toDate(b) - toDate(a)) / 86400000);
+export const weekdayOf = (iso) => toDate(iso).getDay();
 export const isWeekend = (iso) => [0, 6].includes(weekdayOf(iso));
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 

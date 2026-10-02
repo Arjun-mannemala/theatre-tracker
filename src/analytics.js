@@ -170,3 +170,138 @@ export async function weekdayProfile(from, to) {
     n: b.n,
   }));
 }
+
+/* ---------- interpretation ---------- */
+
+export function monthBounds(month) {
+  return { from: month + '-01', to: month + '-' + String(daysInMonth(month)).padStart(2, '0') };
+}
+
+/** Days in the range with nothing logged at all. */
+export async function coverage(from, to) {
+  const days = await DB.rangeDays(from, to);
+  const logged = new Set(days.map((d) => d.date));
+  const total = DB.daysBetween(from, to) + 1;
+  const missing = [];
+  for (let i = 0; i < total; i++) {
+    const d = DB.addDays(from, i);
+    if (d > DB.today()) break;
+    if (!logged.has(d)) missing.push(d);
+  }
+  return { total, logged: logged.size, missing };
+}
+
+/** Average occupancy and revenue per day, grouped by how old the film was. */
+export async function byFilmAge() {
+  const runs = await DB.allRuns();
+  const groups = {};
+  for (const r of runs) {
+    const b = ageBucket(filmAgeDays(r.release_date, r.started_on));
+    if (!b) continue;
+    if (!groups[b.key]) groups[b.key] = { label: b.label, tickets: 0, capacity: 0, revenue: 0, days: 0, runs: 0 };
+    const g = groups[b.key];
+    g.tickets += r.tickets || 0;
+    g.capacity += r.capacity || 0;
+    g.revenue += r.revenue || 0;
+    g.days += r.days || 0;
+    g.runs += 1;
+  }
+  return AGE_BUCKETS.filter((b) => groups[b.key]).map((b) => ({
+    ...groups[b.key],
+    occupancy: occ(groups[b.key].tickets, groups[b.key].capacity),
+    revPerDay: groups[b.key].days > 0 ? groups[b.key].revenue / groups[b.key].days : 0,
+  }));
+}
+
+const rupees = (n) => '\u20B9' + Math.round(n || 0).toLocaleString('en-IN');
+
+/**
+ * Plain sentences drawn from the period. Each one appears only when there is
+ * enough data behind it to be worth saying.
+ */
+export async function headlines(from, to) {
+  const out = [];
+  const sum = await periodSummary(from, to);
+  if (!sum.days.length) return out;
+
+  // Break-even against what actually came in
+  const load = sum.direct + sum.fixed;
+  if (load > 0 && sum.avgPrice > 0) {
+    const perDay = load / sum.days.length;
+    const need = Math.ceil(perDay / sum.avgPrice);
+    const got = Math.round(sum.tickets / sum.days.length);
+    out.push(
+      got >= need
+        ? `You need about ${need} tickets a day to cover costs. You averaged ${got}.`
+        : `You need about ${need} tickets a day to cover costs. You averaged ${got}, which is ${need - got} short.`
+    );
+  }
+
+  // Weekday spread
+  const wd = await weekdayProfile(from, to);
+  const active = wd.filter((w) => w.n >= 2);
+  if (active.length >= 4) {
+    const best = active.reduce((a, b) => (b.avgRevenue > a.avgRevenue ? b : a));
+    const worst = active.reduce((a, b) => (b.avgRevenue < a.avgRevenue ? b : a));
+    if (worst.avgRevenue > 0 && best.avgRevenue / worst.avgRevenue >= 1.4) {
+      out.push(
+        `${best.day} earns about ${(best.avgRevenue / worst.avgRevenue).toFixed(1)}\u00D7 what ${worst.day} does.`
+      );
+    }
+  }
+
+  // Slots pulling their weight
+  const slots = await DB.slotBreakdown(from, to);
+  if (slots.length >= 2) {
+    const scored = slots.map((s) => ({ ...s, o: occ(s.tickets, s.capacity) }));
+    const weak = scored.filter((s) => s.o != null && s.o < 15 && s.shows >= 5);
+    if (weak.length) {
+      out.push(
+        `${weak.map((w) => w.slot).join(' and ')} ran under 15% full across ${weak.reduce(
+          (a, w) => a + w.shows, 0
+        )} shows. Worth asking whether they pay for themselves.`
+      );
+    } else {
+      const best = scored.reduce((a, b) => ((b.o || 0) > (a.o || 0) ? b : a));
+      if (best.o != null) out.push(`${best.slot} is your strongest slot at ${Math.round(best.o)}% full.`);
+    }
+  }
+
+  // Class mix
+  const mix = await DB.classMix(from, to);
+  if (mix.length >= 2 && sum.revenue > 0) {
+    const top = mix.reduce((a, b) => (b.revenue > a.revenue ? b : a));
+    const shareRev = (top.revenue / sum.revenue) * 100;
+    const shareTix = sum.tickets > 0 ? (top.tickets / sum.tickets) * 100 : 0;
+    if (Math.abs(shareRev - shareTix) >= 8) {
+      out.push(
+        `${top.class_name} is ${Math.round(shareTix)}% of tickets but ${Math.round(shareRev)}% of takings.`
+      );
+    }
+  }
+
+  // Film age, once there is history to compare
+  const ages = await byFilmAge();
+  if (ages.length >= 2) {
+    const sorted = ages.slice().sort((a, b) => (b.occupancy || 0) - (a.occupancy || 0));
+    const top = sorted[0];
+    const bottom = sorted[sorted.length - 1];
+    if (top.occupancy != null && bottom.occupancy != null && top.occupancy - bottom.occupancy >= 8) {
+      out.push(
+        `Films ${top.label.toLowerCase()} run at ${Math.round(top.occupancy)}% full for you, against ${Math.round(
+          bottom.occupancy
+        )}% for films ${bottom.label.toLowerCase()}.`
+      );
+    }
+  }
+
+  // Where the money goes
+  const cats = await DB.categoryBreakdown(from, to, DB.monthOf(to));
+  const catTotal = cats.reduce((a, c) => a + c.total, 0);
+  if (cats.length && catTotal > 0) {
+    const top = cats[0];
+    out.push(`${top.name} is your largest cost at ${rupees(top.total)}, ${Math.round((top.total / catTotal) * 100)}% of spend.`);
+  }
+
+  return out;
+}

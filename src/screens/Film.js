@@ -326,7 +326,10 @@ export default function Film({ refreshKey, bump }) {
   const bucket = A.ageBucket(age);
 
   return (
-    <ScrollView style={S.screen} contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
+    <ScrollView
+      style={S.screen}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
       <Text style={S.h1}>Film</Text>
 
       <Card style={{ marginTop: 14 }}>
@@ -370,7 +373,7 @@ export default function Film({ refreshKey, bump }) {
           {prior.map((p) => (
             <View key={p.id} style={[S.between, { marginTop: 8 }]}>
               <Text style={S.body}>
-                {new Date(p.started_on + 'T00:00:00').toLocaleDateString('en-IN', {
+                {DB.toDate(p.started_on).toLocaleDateString('en-IN', {
                   month: 'short',
                   year: 'numeric',
                 })}

@@ -54,7 +54,10 @@ export default function Expenses({ refreshKey, bump }) {
   const shiftMonth = (n) => setMonth(DB.shiftMonth(month, n));
 
   return (
-    <ScrollView style={S.screen} contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
+    <ScrollView
+      style={S.screen}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={[S.pad, { paddingBottom: 40 }]}>
       <Text style={S.h1}>Expenses</Text>
 
       <View style={[S.row, { marginTop: 14, flexWrap: 'wrap' }]}>
@@ -69,7 +72,7 @@ export default function Expenses({ refreshKey, bump }) {
             <Text style={[S.h2, { marginTop: 3 }]}>
               {kind === 'daily'
                 ? period
-                : new Date(month + '-01T00:00:00').toLocaleDateString('en-IN', {
+                : DB.toDate(month).toLocaleDateString('en-IN', {
                     month: 'long',
                     year: 'numeric',
                   })}
